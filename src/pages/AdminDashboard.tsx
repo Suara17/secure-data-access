@@ -1,15 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SecurityLevelBadge } from '@/components/SecurityLevelBadge';
-import { 
+import {
   Shield, LogOut, Users, FileText, Settings, Activity,
-  Plus, Edit2, Trash2, Check, X
+  Plus, Edit2, Trash2, Check, X, Loader2
 } from 'lucide-react';
-import { mockUsers, mockDataRecords, mockSecurityRules, mockAuditLogs } from '@/data/mockData';
-import { SECURITY_LEVELS, SecurityLevel } from '@/types/security';
+import api from '@/lib/api';
+import { AdminUser, AuditLog, SecurityLevelInfo, CreateUserRequest, UpdateUserLabelsRequest, CreateSalaryRequest, CreateNoticeRequest, SECURITY_LEVELS, SecurityLevel } from '@/types/security';
+import { toast } from '@/hooks/use-toast';
 import {
   Table,
   TableBody,
@@ -26,22 +27,41 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from '@/components/ui/input';
-import { toast } from '@/hooks/use-toast';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState(mockUsers);
-  const [dataRecords, setDataRecords] = useState(mockDataRecords);
-  const [rules, setRules] = useState(mockSecurityRules);
-  const [auditLogs] = useState(mockAuditLogs);
 
-  // New data entry form
-  const [newData, setNewData] = useState({
+  // State for API data
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [securityLevels, setSecurityLevels] = useState<SecurityLevelInfo[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Form states
+  const [newUser, setNewUser] = useState({
+    username: '',
+    password: '',
+    real_name: '',
+    security_level_id: 1,
+    category_id: 1,
+  });
+
+  const [newSalary, setNewSalary] = useState({
+    employee_name: '',
+    base_salary: 0,
+    bonus: 0,
+    data_security_level_id: 1,
+    data_category_id: 1,
+  });
+
+  const [newNotice, setNewNotice] = useState({
     title: '',
     content: '',
-    category: '',
-    securityLevel: 'public' as SecurityLevel,
+    data_security_level_id: 1,
+    data_category_id: 1,
   });
 
   const handleLogout = () => {
@@ -49,36 +69,130 @@ export default function AdminDashboard() {
     navigate('/login');
   };
 
-  const handleUserLevelChange = (userId: string, newLevel: SecurityLevel) => {
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, securityLevel: newLevel } : u
-    ));
-    toast({
-      title: "用户权限已更新",
-      description: `安全等级已变更为: ${SECURITY_LEVELS.find(l => l.value === newLevel)?.label}`,
-    });
-  };
-
-  const handleAddData = (e: React.FormEvent) => {
-    e.preventDefault();
-    const record = {
-      id: String(dataRecords.length + 1),
-      ...newData,
-      createdBy: user?.username || 'admin',
-      createdAt: new Date(),
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [usersRes, securityLevelsRes, auditLogsRes] = await Promise.all([
+          api.get('/api/admin/users'),
+          api.get('/api/admin/security-levels'),
+          api.get('/api/admin/audit-logs')
+        ]);
+        setUsers(usersRes.data);
+        setSecurityLevels(securityLevelsRes.data);
+        setAuditLogs(auditLogsRes.data);
+      } catch (error) {
+        console.error('Failed to fetch admin data:', error);
+        toast({
+          title: "加载失败",
+          description: "无法加载管理员数据，请检查网络连接",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
     };
-    setDataRecords([...dataRecords, record]);
-    setNewData({ title: '', content: '', category: '', securityLevel: 'public' });
-    toast({
-      title: "数据录入成功",
-      description: `"${record.title}" 已添加，安全级别: ${SECURITY_LEVELS.find(l => l.value === record.securityLevel)?.label}`,
-    });
+
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/admin/users', newUser);
+      toast({
+        title: "用户创建成功",
+        description: `用户 ${newUser.username} 已创建`,
+      });
+      setNewUser({
+        username: '',
+        password: '',
+        real_name: '',
+        security_level_id: 1,
+        category_id: 1,
+      });
+      // Refresh users list
+      const usersRes = await api.get('/api/admin/users');
+      setUsers(usersRes.data);
+    } catch (error) {
+      toast({
+        title: "创建失败",
+        description: "无法创建用户，请检查输入信息",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleToggleRule = (ruleId: string) => {
-    setRules(rules.map(r => 
-      r.id === ruleId ? { ...r, isActive: !r.isActive } : r
-    ));
+  const handleUpdateUserLabels = async (userId: number, securityLevelId: number, categoryId: number) => {
+    try {
+      await api.put(`/api/admin/users/${userId}/labels`, {
+        security_level_id: securityLevelId,
+        category_id: categoryId,
+      });
+      toast({
+        title: "用户权限已更新",
+        description: "安全标记等级已成功修改",
+      });
+      // Refresh users list
+      const usersRes = await api.get('/api/admin/users');
+      setUsers(usersRes.data);
+    } catch (error) {
+      toast({
+        title: "更新失败",
+        description: "无法更新用户权限",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateSalary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/admin/salaries', newSalary);
+      toast({
+        title: "薪资录入成功",
+        description: `${newSalary.employee_name} 的薪资信息已录入`,
+      });
+      setNewSalary({
+        employee_name: '',
+        base_salary: 0,
+        bonus: 0,
+        data_security_level_id: 1,
+        data_category_id: 1,
+      });
+    } catch (error) {
+      toast({
+        title: "录入失败",
+        description: "无法录入薪资信息",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCreateNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.post('/api/admin/notices', newNotice);
+      toast({
+        title: "公告发布成功",
+        description: `公告 "${newNotice.title}" 已发布`,
+      });
+      setNewNotice({
+        title: '',
+        content: '',
+        data_security_level_id: 1,
+        data_category_id: 1,
+      });
+    } catch (error) {
+      toast({
+        title: "发布失败",
+        description: "无法发布公告",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -99,7 +213,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{user?.username}</span>
-              <SecurityLevelBadge level={user?.securityLevel || 'public'} size="sm" />
+              <SecurityLevelBadge level={(user?.security_level?.level_name || '公开') as SecurityLevel} size="sm" />
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="w-4 h-4" />
@@ -110,303 +224,316 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="rules" className="space-y-6">
-          <TabsList className="bg-muted/50 p-1">
-            <TabsTrigger value="rules" className="gap-2">
-              <Settings className="w-4 h-4" />
-              标记规则配置
-            </TabsTrigger>
-            <TabsTrigger value="users" className="gap-2">
-              <Users className="w-4 h-4" />
-              用户赋权
-            </TabsTrigger>
-            <TabsTrigger value="data" className="gap-2">
-              <FileText className="w-4 h-4" />
-              数据录入
-            </TabsTrigger>
-            <TabsTrigger value="audit" className="gap-2">
-              <Activity className="w-4 h-4" />
-              审计日志
-            </TabsTrigger>
-          </TabsList>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <span className="ml-2">加载中...</span>
+          </div>
+        ) : (
+          <Tabs defaultValue="users" className="space-y-6">
+            <TabsList className="bg-muted/50 p-1">
+              <TabsTrigger value="users" className="gap-2">
+                <Users className="w-4 h-4" />
+                用户管理
+              </TabsTrigger>
+              <TabsTrigger value="data" className="gap-2">
+                <FileText className="w-4 h-4" />
+                数据录入
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="gap-2">
+                <Activity className="w-4 h-4" />
+                审计日志
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Security Rules Tab */}
-          <TabsContent value="rules" className="space-y-4">
-            <div className="glass-card p-6">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-primary" />
-                安全级别规则配置
-              </h2>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>级别名称</TableHead>
-                    <TableHead>标识</TableHead>
-                    <TableHead>优先级</TableHead>
-                    <TableHead>描述</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell className="font-medium">{rule.name}</TableCell>
-                      <TableCell>
-                        <SecurityLevelBadge level={rule.level} size="sm" />
-                      </TableCell>
-                      <TableCell>
-                        <span className="font-mono text-primary">{rule.priority}</span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {rule.description}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                          rule.isActive 
-                            ? 'bg-success/20 text-success' 
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {rule.isActive ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                          {rule.isActive ? '启用' : '禁用'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Edit2 className="w-3 h-3" />
-                          </Button>
-                          <Button 
-                            variant={rule.isActive ? "ghost" : "outline"} 
-                            size="sm"
-                            onClick={() => handleToggleRule(rule.id)}
-                          >
-                            {rule.isActive ? '禁用' : '启用'}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          {/* User Authorization Tab */}
-          <TabsContent value="users" className="space-y-4">
-            <div className="glass-card p-6">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Users className="w-5 h-5 text-primary" />
-                用户安全等级管理
-              </h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                管理员可以修改用户的安全标记等级，实现"分配主体安全标记"功能
-              </p>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>用户名</TableHead>
-                    <TableHead>邮箱</TableHead>
-                    <TableHead>角色</TableHead>
-                    <TableHead>当前安全等级</TableHead>
-                    <TableHead>修改等级</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.username}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.email}</TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          u.role === 'admin' 
-                            ? 'bg-primary/20 text-primary' 
-                            : 'bg-muted text-muted-foreground'
-                        }`}>
-                          {u.role === 'admin' ? '管理员' : '普通用户'}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <SecurityLevelBadge level={u.securityLevel} />
-                      </TableCell>
-                      <TableCell>
+            {/* User Management Tab */}
+            <TabsContent value="users" className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Create User Form */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="w-5 h-5" />
+                      创建新用户
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleCreateUser} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="username">用户名</Label>
+                        <Input
+                          id="username"
+                          value={newUser.username}
+                          onChange={(e) => setNewUser({...newUser, username: e.target.value})}
+                          placeholder="输入用户名"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="password">密码</Label>
+                        <Input
+                          id="password"
+                          type="password"
+                          value={newUser.password}
+                          onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                          placeholder="输入密码"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="real_name">真实姓名</Label>
+                        <Input
+                          id="real_name"
+                          value={newUser.real_name}
+                          onChange={(e) => setNewUser({...newUser, real_name: e.target.value})}
+                          placeholder="输入真实姓名"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>安全等级</Label>
                         <Select
-                          value={u.securityLevel}
-                          onValueChange={(value) => handleUserLevelChange(u.id, value as SecurityLevel)}
+                          value={newUser.security_level_id.toString()}
+                          onValueChange={(value) => setNewUser({...newUser, security_level_id: parseInt(value)})}
                         >
-                          <SelectTrigger className="w-32">
+                          <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {SECURITY_LEVELS.map((level) => (
-                              <SelectItem key={level.value} value={level.value}>
-                                {level.label}
+                            {securityLevels.map((level) => (
+                              <SelectItem key={level.level_id} value={level.level_id.toString()}>
+                                {level.level_name}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          {/* Data Entry Tab */}
-          <TabsContent value="data" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Entry Form */}
-              <div className="glass-card p-6">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-primary" />
-                  新增数据记录
-                </h2>
-                <form onSubmit={handleAddData} className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">标题</label>
-                    <Input
-                      value={newData.title}
-                      onChange={(e) => setNewData({...newData, title: e.target.value})}
-                      placeholder="输入数据标题"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">内容</label>
-                    <Input
-                      value={newData.content}
-                      onChange={(e) => setNewData({...newData, content: e.target.value})}
-                      placeholder="输入数据内容"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">分类</label>
-                    <Input
-                      value={newData.category}
-                      onChange={(e) => setNewData({...newData, category: e.target.value})}
-                      placeholder="如：财务、技术、公告"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm text-muted-foreground">安全级别</label>
-                    <Select
-                      value={newData.securityLevel}
-                      onValueChange={(value) => setNewData({...newData, securityLevel: value as SecurityLevel})}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SECURITY_LEVELS.map((level) => (
-                          <SelectItem key={level.value} value={level.value}>
-                            {level.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button type="submit" className="w-full">
-                    <Plus className="w-4 h-4" />
-                    添加记录
-                  </Button>
-                </form>
-              </div>
-
-              {/* Existing Records */}
-              <div className="glass-card p-6">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  现有数据 ({dataRecords.length})
-                </h2>
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {dataRecords.map((record) => (
-                    <div key={record.id} className="bg-muted/30 rounded-lg p-3 space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-medium text-foreground">{record.title}</h3>
-                          <p className="text-xs text-muted-foreground">{record.category}</p>
-                        </div>
-                        <SecurityLevelBadge level={record.securityLevel} size="sm" />
                       </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{record.content}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </TabsContent>
+                      <Button type="submit" className="w-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        创建用户
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
 
-          {/* Audit Logs Tab */}
-          <TabsContent value="audit" className="space-y-4">
-            <div className="glass-card p-6">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" />
-                安全审计日志
-              </h2>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>用户</TableHead>
-                    <TableHead>操作</TableHead>
-                    <TableHead>资源</TableHead>
-                    <TableHead>主体标记</TableHead>
-                    <TableHead>客体标记</TableHead>
-                    <TableHead>结果</TableHead>
-                    <TableHead>IP地址</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {auditLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="font-mono text-xs">
-                        {log.timestamp.toLocaleString('zh-CN')}
-                      </TableCell>
-                      <TableCell className="font-medium">{log.username}</TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          log.action === 'denied' 
-                            ? 'bg-destructive/20 text-destructive' 
-                            : log.action === 'access'
-                            ? 'bg-success/20 text-success'
-                            : 'bg-primary/20 text-primary'
-                        }`}>
-                          {log.action === 'access' ? '访问' : 
-                           log.action === 'modify' ? '修改' :
-                           log.action === 'delete' ? '删除' : '拒绝'}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">{log.resourceName}</TableCell>
-                      <TableCell>
-                        <SecurityLevelBadge level={log.subjectLevel} size="sm" showIcon={false} />
-                      </TableCell>
-                      <TableCell>
-                        <SecurityLevelBadge level={log.objectLevel} size="sm" showIcon={false} />
-                      </TableCell>
-                      <TableCell>
-                        {log.success ? (
-                          <span className="text-success flex items-center gap-1">
-                            <Check className="w-3 h-3" /> 成功
-                          </span>
-                        ) : (
-                          <span className="text-destructive flex items-center gap-1">
-                            <X className="w-3 h-3" /> 拒绝
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {log.ipAddress}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-        </Tabs>
+                {/* Users List */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>用户列表 ({users.length})</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {users.map((u) => (
+                        <div key={u.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <div>
+                            <p className="font-medium">{u.username}</p>
+                            <p className="text-sm text-muted-foreground">{u.real_name}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <SecurityLevelBadge level={u.security_level.level_name} size="sm" />
+                            <Select
+                              value={`${u.security_level.level_id}`}
+                              onValueChange={(value) => handleUpdateUserLabels(u.id, parseInt(value), u.category.category_id)}
+                            >
+                              <SelectTrigger className="w-24 h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {securityLevels.map((level) => (
+                                  <SelectItem key={level.level_id} value={level.level_id.toString()}>
+                                    {level.level_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Data Entry Tab */}
+            <TabsContent value="data" className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Salary Entry Form */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="w-5 h-5" />
+                      录入薪资数据
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleCreateSalary} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="employee_name">员工姓名</Label>
+                        <Input
+                          id="employee_name"
+                          value={newSalary.employee_name}
+                          onChange={(e) => setNewSalary({...newSalary, employee_name: e.target.value})}
+                          placeholder="输入员工姓名"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="base_salary">基本薪资</Label>
+                        <Input
+                          id="base_salary"
+                          type="number"
+                          value={newSalary.base_salary}
+                          onChange={(e) => setNewSalary({...newSalary, base_salary: parseFloat(e.target.value) || 0})}
+                          placeholder="输入基本薪资"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bonus">奖金</Label>
+                        <Input
+                          id="bonus"
+                          type="number"
+                          value={newSalary.bonus}
+                          onChange={(e) => setNewSalary({...newSalary, bonus: parseFloat(e.target.value) || 0})}
+                          placeholder="输入奖金"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>安全等级</Label>
+                        <Select
+                          value={newSalary.data_security_level_id.toString()}
+                          onValueChange={(value) => setNewSalary({...newSalary, data_security_level_id: parseInt(value)})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {securityLevels.map((level) => (
+                              <SelectItem key={level.level_id} value={level.level_id.toString()}>
+                                {level.level_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button type="submit" className="w-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        录入薪资
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+
+                {/* Notice Entry Form */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="w-5 h-5" />
+                      发布公告
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleCreateNotice} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="title">公告标题</Label>
+                        <Input
+                          id="title"
+                          value={newNotice.title}
+                          onChange={(e) => setNewNotice({...newNotice, title: e.target.value})}
+                          placeholder="输入公告标题"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="content">公告内容</Label>
+                        <Input
+                          id="content"
+                          value={newNotice.content}
+                          onChange={(e) => setNewNotice({...newNotice, content: e.target.value})}
+                          placeholder="输入公告内容"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>安全等级</Label>
+                        <Select
+                          value={newNotice.data_security_level_id.toString()}
+                          onValueChange={(value) => setNewNotice({...newNotice, data_security_level_id: parseInt(value)})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {securityLevels.map((level) => (
+                              <SelectItem key={level.level_id} value={level.level_id.toString()}>
+                                {level.level_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button type="submit" className="w-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        发布公告
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Audit Logs Tab */}
+            <TabsContent value="audit" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    安全审计日志 ({auditLogs.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>时间</TableHead>
+                        <TableHead>用户</TableHead>
+                        <TableHead>操作</TableHead>
+                        <TableHead>资源</TableHead>
+                        <TableHead>结果</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {auditLogs.map((log, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-mono text-xs">
+                            {new Date(log.request_time).toLocaleString('zh-CN')}
+                          </TableCell>
+                          <TableCell className="font-medium">{log.username}</TableCell>
+                          <TableCell>
+                            <span className="px-2 py-1 rounded text-xs bg-primary/20 text-primary">
+                              {log.operation}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">{log.resource_name}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                              log.result === 'ALLOW'
+                                ? 'bg-success/20 text-success'
+                                : 'bg-destructive/20 text-destructive'
+                            }`}>
+                              {log.result === 'ALLOW' ? '✓ 允许' : '✗ 拒绝'}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        )}
       </main>
     </div>
   );

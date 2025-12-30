@@ -1,41 +1,62 @@
-import { DataRecord, AuditLog, SecurityRule, User, SecurityLevel } from '@/types/security';
+import { LegacyDataRecord, LegacyAuditLog, LegacySecurityRule, User, SecurityLevel } from '@/types/security';
 
+// Legacy mock data for backward compatibility
 export const mockUsers: User[] = [
   {
-    id: '1',
+    id: 1,
     username: 'admin',
     email: 'admin@security.gov',
     role: 'admin',
-    securityLevel: '机密',
-    createdAt: new Date('2024-01-01'),
+    security_level: {
+      level_id: 4,
+      level_name: '机密',
+      level_weight: 4,
+      description: '核心技术或商业秘密'
+    },
+    created_at: '2024-01-01T00:00:00Z',
   },
   {
-    id: '2',
+    id: 2,
     username: 'public_user',
     email: 'public@company.com',
     role: 'user',
-    securityLevel: '公开',
-    createdAt: new Date('2024-03-15'),
+    security_level: {
+      level_id: 1,
+      level_name: '公开',
+      level_weight: 1,
+      description: '可被所有用户访问的公开信息'
+    },
+    created_at: '2024-03-15T00:00:00Z',
   },
   {
-    id: '3',
+    id: 3,
     username: 'secret_user',
     email: 'secret@security.gov',
     role: 'user',
-    securityLevel: '机密',
-    createdAt: new Date('2024-02-20'),
+    security_level: {
+      level_id: 4,
+      level_name: '机密',
+      level_weight: 4,
+      description: '核心技术或商业秘密'
+    },
+    created_at: '2024-02-20T00:00:00Z',
   },
   {
-    id: '4',
+    id: 4,
     username: 'internal_user',
     email: 'internal@company.com',
     role: 'user',
-    securityLevel: '内部',
-    createdAt: new Date('2024-04-10'),
+    security_level: {
+      level_id: 2,
+      level_name: '内部',
+      level_weight: 2,
+      description: '仅限内部员工访问'
+    },
+    created_at: '2024-04-10T00:00:00Z',
   },
 ];
 
-export const mockDataRecords: DataRecord[] = [
+export const mockDataRecords: LegacyDataRecord[] = [
   {
     id: '1',
     title: '公司年度公告',
@@ -92,7 +113,7 @@ export const mockDataRecords: DataRecord[] = [
   },
 ];
 
-export const mockSecurityRules: SecurityRule[] = [
+export const mockSecurityRules: LegacySecurityRule[] = [
   {
     id: '1',
     name: '公开级别',
@@ -127,7 +148,7 @@ export const mockSecurityRules: SecurityRule[] = [
   },
   ];
 
-export const mockAuditLogs: AuditLog[] = [
+export const mockAuditLogs: LegacyAuditLog[] = [
   {
     id: '1',
     userId: '2',

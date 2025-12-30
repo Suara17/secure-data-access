@@ -1,15 +1,101 @@
 export type SecurityLevel = '公开' | '内部' | '秘密' | '机密';
 
-export interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: 'admin' | 'user';
-  securityLevel: SecurityLevel;
-  createdAt: Date;
+// API响应类型 - 与后端匹配
+export interface SecurityLevelInfo {
+  level_id: number;
+  level_name: string;
+  level_weight: number;
+  description?: string;
 }
 
-export interface SecurityRule {
+export interface CategoryInfo {
+  category_id: number;
+  category_code: string;
+  category_name: string;
+  description?: string;
+}
+
+// 用户认证相关
+export interface User {
+  id: number;
+  username: string;
+  email?: string;
+  role: 'admin' | 'user';
+  security_level: SecurityLevelInfo;
+  created_at: string;
+}
+
+// 管理员用户响应
+export interface AdminUser {
+  id: number;
+  username: string;
+  real_name: string;
+  security_level: SecurityLevelInfo;
+  category: CategoryInfo;
+  trust_level: string;
+  created_at: string;
+}
+
+// 薪资记录
+export interface SalaryRecord {
+  employee_name: string;
+  amount: number | null;
+  security_level: string;
+  access_result: 'ALLOW' | 'DENY';
+}
+
+// 公告记录
+export interface NoticeRecord {
+  title: string;
+  content: string | null;
+  security_level: string;
+  access_result: 'ALLOW' | 'DENY';
+}
+
+// 审计日志
+export interface AuditLog {
+  request_time: string;
+  username: string;
+  resource_name: string;
+  operation: string;
+  result: 'ALLOW' | 'DENY';
+  fail_reason?: string;
+}
+
+// 用户创建请求
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  real_name: string;
+  security_level_id: number;
+  category_id: number;
+}
+
+// 用户标签更新请求
+export interface UpdateUserLabelsRequest {
+  security_level_id: number;
+  category_id: number;
+}
+
+// 薪资录入请求
+export interface CreateSalaryRequest {
+  employee_name: string;
+  base_salary: number;
+  bonus?: number;
+  data_security_level_id: number;
+  data_category_id: number;
+}
+
+// 公告录入请求
+export interface CreateNoticeRequest {
+  title: string;
+  content: string;
+  data_security_level_id: number;
+  data_category_id: number;
+}
+
+// 兼容原有代码的接口（用于mock数据）
+export interface LegacySecurityRule {
   id: string;
   name: string;
   level: SecurityLevel;
@@ -18,7 +104,7 @@ export interface SecurityRule {
   isActive: boolean;
 }
 
-export interface DataRecord {
+export interface LegacyDataRecord {
   id: string;
   title: string;
   content: string;
@@ -28,7 +114,7 @@ export interface DataRecord {
   createdAt: Date;
 }
 
-export interface AuditLog {
+export interface LegacyAuditLog {
   id: string;
   userId: string;
   username: string;

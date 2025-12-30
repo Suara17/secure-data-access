@@ -55,13 +55,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // 1. 获取 Token (注意 FastAPI 需要 form-data 格式)
-      const formData = new FormData();
+      // 1. 获取 Token (使用原生fetch避免axios配置问题)
+      const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
 
-      const res = await api.post('/token', formData);
-      const { access_token } = res.data;
+      const response = await fetch('http://localhost:8002/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const { access_token } = data;
 
       localStorage.setItem('token', access_token);
 
@@ -83,12 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 辅助函数：转换后端数据格式
   const mapBackendUserToFrontend = (data: any): User => ({
-    id: data.id.toString(),
+    id: data.id,
     username: data.username,
     email: data.email,
     role: data.role,
-    securityLevel: mapSecurityLevelNameToKey(data.security_level.level_name), // 转换安全等级名称
-    createdAt: new Date(data.created_at),
+    security_level: data.security_level,
+    created_at: data.created_at,
   });
 
   return (

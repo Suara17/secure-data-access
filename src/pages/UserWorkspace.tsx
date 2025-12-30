@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { SecurityLevelBadge } from '@/components/SecurityLevelBadge';
 import { AccessDeniedModal } from '@/components/AccessDeniedModal';
-import { 
+import {
   Shield, LogOut, FileText, AlertTriangle, Eye, Lock,
-  Filter, Search
+  Filter, Search, Loader2
 } from 'lucide-react';
-import { mockDataRecords } from '@/data/mockData';
-import { canAccess, getSecurityLevelInfo, SecurityLevel, SECURITY_LEVELS } from '@/types/security';
+import api from '@/lib/api';
+import { SalaryRecord, NoticeRecord, canAccess, getSecurityLevelInfo, SecurityLevel, SECURITY_LEVELS } from '@/types/security';
 import {
   Table,
   TableBody,
@@ -33,39 +33,75 @@ export default function UserWorkspace() {
   const [showDeniedModal, setShowDeniedModal] = useState(false);
   const [deniedResource, setDeniedResource] = useState({
     name: '',
-    level: 'secret' as SecurityLevel,
+    level: '秘密' as SecurityLevel,
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState<string>('all');
+  const [salaries, setSalaries] = useState<SalaryRecord[]>([]);
+  const [notices, setNotices] = useState<NoticeRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'salaries' | 'notices'>('salaries');
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  // Filter data based on user's security level
-  const accessibleData = mockDataRecords.filter(record => 
-    canAccess(user?.securityLevel || 'public', record.securityLevel)
-  );
+  // Fetch data on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [salariesRes, noticesRes] = await Promise.all([
+          api.get('/api/salaries'),
+          api.get('/api/notices')
+        ]);
+        setSalaries(salariesRes.data);
+        setNotices(noticesRes.data);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  // Apply search and filter
-  const filteredData = accessibleData.filter(record => {
-    const matchesSearch = record.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          record.content.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterLevel === 'all' || record.securityLevel === filterLevel;
+    if (user) {
+      fetchData();
+    }
+  }, [user]);
+
+  // Filter salaries data
+  const accessibleSalaries = salaries.filter(record => record.access_result === 'ALLOW');
+  const filteredSalaries = accessibleSalaries.filter(record => {
+    const searchableText = `${record.employee_name} ${record.security_level}`;
+    const matchesSearch = searchableText.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterLevel === 'all' || record.security_level === filterLevel;
     return matchesSearch && matchesFilter;
   });
+
+  // Filter notices data
+  const accessibleNotices = notices.filter(record => record.access_result === 'ALLOW');
+  const filteredNotices = accessibleNotices.filter(record => {
+    const searchableText = `${record.title} ${record.content || ''} ${record.security_level}`;
+    const matchesSearch = searchableText.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filterLevel === 'all' || record.security_level === filterLevel;
+    return matchesSearch && matchesFilter;
+  });
+
+  const currentFilteredData = activeTab === 'salaries' ? filteredSalaries : filteredNotices;
+  const currentAccessibleData = activeTab === 'salaries' ? accessibleSalaries : accessibleNotices;
+  const totalData = activeTab === 'salaries' ? salaries : notices;
 
   // Test unauthorized access
   const handleUnauthorizedTest = () => {
     setDeniedResource({
       name: '核心技术架构文档',
-      level: 'secret',
+      level: '机密',
     });
     setShowDeniedModal(true);
   };
 
-  const userLevelInfo = getSecurityLevelInfo(user?.securityLevel || 'public');
+  const userLevelInfo = getSecurityLevelInfo(user?.security_level?.level_name || '公开');
 
   return (
     <div className="min-h-screen bg-background">
@@ -85,7 +121,7 @@ export default function UserWorkspace() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{user?.username}</span>
-              <SecurityLevelBadge level={user?.securityLevel || 'public'} size="sm" />
+              <SecurityLevelBadge level={user?.security_level?.level_name || '公开'} size="sm" />
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="w-4 h-4" />
@@ -107,7 +143,7 @@ export default function UserWorkspace() {
                 <h2 className="text-lg font-semibold text-foreground">当前用户: {user?.username}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-sm text-muted-foreground">安全标记等级:</span>
-                  <SecurityLevelBadge level={user?.securityLevel || 'public'} />
+                  <SecurityLevelBadge level={user?.security_level?.level_name || '公开'} />
                   <span className="text-sm text-muted-foreground ml-2">
                     (可访问等级 ≤ {userLevelInfo.priority} 的数据)
                   </span>
@@ -127,6 +163,24 @@ export default function UserWorkspace() {
           </div>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-4">
+          <Button
+            variant={activeTab === 'salaries' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('salaries')}
+            className="gap-2"
+          >
+            薪资数据 ({salaries.length})
+          </Button>
+          <Button
+            variant={activeTab === 'notices' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('notices')}
+            className="gap-2"
+          >
+            公告通知 ({notices.length})
+          </Button>
+        </div>
+
         {/* Data Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="glass-card p-4 flex items-center gap-4">
@@ -134,7 +188,7 @@ export default function UserWorkspace() {
               <Eye className="w-5 h-5 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{accessibleData.length}</p>
+              <p className="text-2xl font-bold text-foreground">{currentAccessibleData.length}</p>
               <p className="text-sm text-muted-foreground">可访问记录</p>
             </div>
           </div>
@@ -144,7 +198,7 @@ export default function UserWorkspace() {
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">
-                {mockDataRecords.length - accessibleData.length}
+                {totalData.length - currentAccessibleData.length}
               </p>
               <p className="text-sm text-muted-foreground">受限记录</p>
             </div>
@@ -154,7 +208,7 @@ export default function UserWorkspace() {
               <FileText className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{mockDataRecords.length}</p>
+              <p className="text-2xl font-bold text-foreground">{totalData.length}</p>
               <p className="text-sm text-muted-foreground">总记录数</p>
             </div>
           </div>
@@ -195,38 +249,43 @@ export default function UserWorkspace() {
             </div>
           </div>
 
-          {filteredData.length > 0 ? (
+          {currentFilteredData.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>标题</TableHead>
-                  <TableHead>分类</TableHead>
+                  <TableHead>{activeTab === 'salaries' ? '员工姓名' : '标题'}</TableHead>
                   <TableHead>安全级别</TableHead>
-                  <TableHead>内容预览</TableHead>
-                  <TableHead>创建时间</TableHead>
+                  <TableHead>{activeTab === 'salaries' ? '薪资金额' : '内容预览'}</TableHead>
+                  <TableHead>访问状态</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredData.map((record, index) => (
-                  <TableRow 
-                    key={record.id}
+                {currentFilteredData.map((record, index) => (
+                  <TableRow
+                    key={`${activeTab}-${index}`}
                     className="animate-fade-in"
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
-                    <TableCell className="font-medium">{record.title}</TableCell>
-                    <TableCell>
-                      <span className="px-2 py-1 bg-muted rounded text-xs text-muted-foreground">
-                        {record.category}
-                      </span>
+                    <TableCell className="font-medium">
+                      {'employee_name' in record ? record.employee_name : record.title}
                     </TableCell>
                     <TableCell>
-                      <SecurityLevelBadge level={record.securityLevel} size="sm" />
+                      <SecurityLevelBadge level={record.security_level} size="sm" />
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
-                      {record.content}
+                      {'amount' in record
+                        ? (record.amount ? `¥${record.amount.toLocaleString()}` : '*** 权限不足 ***')
+                        : (record.content || '暂无内容')
+                      }
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm font-mono">
-                      {record.createdAt.toLocaleDateString('zh-CN')}
+                    <TableCell>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                        record.access_result === 'ALLOW'
+                          ? 'bg-success/20 text-success'
+                          : 'bg-destructive/20 text-destructive'
+                      }`}>
+                        {record.access_result === 'ALLOW' ? '✓ 允许访问' : '✗ 权限不足'}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -258,7 +317,7 @@ export default function UserWorkspace() {
       <AccessDeniedModal
         open={showDeniedModal}
         onClose={() => setShowDeniedModal(false)}
-        subjectLevel={user?.securityLevel || 'public'}
+        subjectLevel={(user?.security_level?.level_name || '公开') as SecurityLevel}
         objectLevel={deniedResource.level}
         resourceName={deniedResource.name}
       />
