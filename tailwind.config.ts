@@ -69,8 +69,6 @@ export default {
           public: "hsl(var(--level-public))",
           internal: "hsl(var(--level-internal))",
           confidential: "hsl(var(--level-confidential))",
-          secret: "hsl(var(--level-secret))",
-          "top-secret": "hsl(var(--level-top-secret))",
         },
       },
       borderRadius: {

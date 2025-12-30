@@ -12,6 +12,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// 安全等级映射：将后端的中文名称映射到前端的英文键名
+const mapSecurityLevelNameToKey = (levelName: string): 'public' | 'internal' | 'confidential' => {
+  // 后端返回的 level_name 格式： "公开 (Public)", "内部 (Internal)", "机密 (Confidential)"
+  if (levelName.includes('公开') || levelName.includes('Public')) {
+    return 'public';
+  }
+  if (levelName.includes('内部') || levelName.includes('Internal')) {
+    return 'internal';
+  }
+  if (levelName.includes('机密') || levelName.includes('Confidential')) {
+    return 'confidential';
+  }
+  // 默认返回 public
+  return 'public';
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
@@ -68,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: data.username,
     email: data.email,
     role: data.role,
-    securityLevel: data.security_level.level_name, // 取出嵌套的 level_name
+    securityLevel: mapSecurityLevelNameToKey(data.security_level.level_name), // 转换安全等级名称
     createdAt: new Date(data.created_at),
   });
 

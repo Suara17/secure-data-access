@@ -33,7 +33,7 @@ export default function UserWorkspace() {
   const [showDeniedModal, setShowDeniedModal] = useState(false);
   const [deniedResource, setDeniedResource] = useState({
     name: '',
-    level: 'top-secret' as SecurityLevel,
+    level: 'secret' as SecurityLevel,
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState<string>('all');
@@ -59,8 +59,8 @@ export default function UserWorkspace() {
   // Test unauthorized access
   const handleUnauthorizedTest = () => {
     setDeniedResource({
-      name: '核心财务数据',
-      level: 'top-secret',
+      name: '核心技术架构文档',
+      level: 'secret',
     });
     setShowDeniedModal(true);
   };
