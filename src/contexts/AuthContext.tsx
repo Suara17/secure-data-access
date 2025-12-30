@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { User, SecurityLevel } from '@/types/security';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { User } from '@/types/security';
+import api from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -11,59 +12,65 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo
-const MOCK_USERS: (User & { password: string })[] = [
-  {
-    id: '1',
-    username: 'admin',
-    email: 'admin@security.gov',
-    role: 'admin',
-    securityLevel: 'top-secret',
-    password: 'admin123',
-    createdAt: new Date('2024-01-01'),
-  },
-  {
-    id: '2',
-    username: 'public_user',
-    email: 'public@company.com',
-    role: 'user',
-    securityLevel: 'public',
-    password: 'user123',
-    createdAt: new Date('2024-03-15'),
-  },
-  {
-    id: '3',
-    username: 'secret_user',
-    email: 'secret@security.gov',
-    role: 'user',
-    securityLevel: 'top-secret',
-    password: 'secret123',
-    createdAt: new Date('2024-02-20'),
-  },
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
+  // 初始化时检查 Token 是否有效
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const response = await api.get('/users/me');
+          // 需要转换一下后端返回的数据结构以匹配前端 User 类型
+          const userData = mapBackendUserToFrontend(response.data);
+          setUser(userData);
+        } catch (error) {
+          console.error("Token invalid", error);
+          localStorage.removeItem('token');
+        }
+      }
+    };
+    checkAuth();
+  }, []);
+
   const login = async (username: string, password: string): Promise<boolean> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    const foundUser = MOCK_USERS.find(
-      u => u.username === username && u.password === password
-    );
-    
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
+    try {
+      // 1. 获取 Token (注意 FastAPI 需要 form-data 格式)
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('password', password);
+
+      const res = await api.post('/token', formData);
+      const { access_token } = res.data;
+
+      localStorage.setItem('token', access_token);
+
+      // 2. 获取用户信息
+      const userRes = await api.get('/users/me');
+      const userData = mapBackendUserToFrontend(userRes.data);
+      setUser(userData);
       return true;
+    } catch (error) {
+      console.error("Login failed", error);
+      return false;
     }
-    return false;
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
     setUser(null);
   };
+
+  // 辅助函数：转换后端数据格式
+  const mapBackendUserToFrontend = (data: any): User => ({
+    id: data.id.toString(),
+    username: data.username,
+    email: data.email,
+    role: data.role,
+    securityLevel: data.security_level.level_name, // 取出嵌套的 level_name
+    createdAt: new Date(data.created_at),
+  });
 
   return (
     <AuthContext.Provider
