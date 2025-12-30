@@ -1,4 +1,4 @@
-export type SecurityLevel = 'public' | 'internal' | 'secret' | 'confidential';
+export type SecurityLevel = '公开' | '内部' | '秘密' | '机密';
 
 export interface User {
   id: string;
@@ -43,10 +43,10 @@ export interface AuditLog {
 }
 
 export const SECURITY_LEVELS: { value: SecurityLevel; label: string; priority: number }[] = [
-  { value: 'public', label: '公开', priority: 1 },
-  { value: 'internal', label: '内部', priority: 2 },
-  { value: 'secret', label: '秘密', priority: 3 },
-  { value: 'confidential', label: '机密', priority: 4 },
+  { value: '公开', label: '公开', priority: 1 },
+  { value: '内部', label: '内部', priority: 2 },
+  { value: '秘密', label: '秘密', priority: 3 },
+  { value: '机密', label: '机密', priority: 4 },
 ];
 
 export const getSecurityLevelInfo = (level: SecurityLevel) => {

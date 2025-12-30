@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, Boolean, DECIMAL, DATETIME, BIGINT, VARCHAR, TEXT, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DECIMAL, DATETIME, BIGINT, VARCHAR, TEXT, ForeignKey, BigInteger, DateTime
 from sqlalchemy.types import Enum
 from sqlalchemy.orm import relationship
 from database import Base # 引入刚才定义的基类
+from datetime import datetime
 
 # 安全等级表
 class SecurityLevel(Base):
@@ -35,7 +36,7 @@ class User(Base):
     category_id = Column(Integer, ForeignKey('sys_category.category_id'), nullable=False)
     trust_level = Column(Enum('USER', 'ADMIN'), default='USER', comment='信任等级')
 
-    created_at = Column(DATETIME, default='CURRENT_TIMESTAMP')
+    created_at = Column(DATETIME, default=datetime.now)
 
     # 关系
     security_label = relationship("SecurityLevel", backref="users")
@@ -55,7 +56,7 @@ class Salary(Base):
     data_category_id = Column(Integer, ForeignKey('sys_category.category_id'), nullable=False, comment='数据所属类别')
     lifecycle_status = Column(Enum('ACTIVE', 'ARCHIVED'), default='ACTIVE', comment='生命周期：ACTIVE=活跃, ARCHIVED=归档')
 
-    create_time = Column(DATETIME, default='CURRENT_TIMESTAMP')
+    create_time = Column(DATETIME, default=datetime.now)
 
     # 关系
     security_label = relationship("SecurityLevel", backref="salaries")
@@ -81,7 +82,8 @@ class Notice(Base):
 class AccessPolicy(Base):
     __tablename__ = "sys_access_policy"
 
-    policy_id = Column(BIGINT, primary_key=True, autoincrement=True)
+    # 确保这里也是 BigInteger，因为 Decision 表外键连的是它
+    policy_id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # 关联的主体与客体
     subject_user_id = Column(Integer, ForeignKey('sys_user.user_id'), nullable=False, comment='发起访问的主体ID')
@@ -93,25 +95,32 @@ class AccessPolicy(Base):
     object_level_snapshot = Column(Integer, nullable=False, comment='当时的客体安全等级权重')
     operation_requested = Column(String(20), nullable=False, comment='请求的操作：READ/WRITE')
 
-    request_time = Column(DATETIME, default='CURRENT_TIMESTAMP')
+    request_time = Column(DATETIME, default=datetime.now)
 
     # 关系
     user = relationship("User", backref="access_policies")
+
+    # 1:1 关系定义
+    decision = relationship("AccessDecision", uselist=False, back_populates="policy")
 
 # 审计与决策模型：访问决策结果表
 class AccessDecision(Base):
     __tablename__ = "sys_access_decision"
 
-    decision_id = Column(BIGINT, primary_key=True, comment='主键，直接使用策略ID以保证1:1')
+    # 【核心修复点】完美！
+    # 这里的 decision_id 既是主键，也是外键，实现了 1:1 强关联
+    # 这里的 BigInteger 对应数据库 SQL 中的 BIGINT
+    decision_id = Column(BigInteger, ForeignKey("sys_access_policy.policy_id"), primary_key=True)
 
-    # 决策结果
-    result_code = Column(Enum('ALLOW', 'DENY'), nullable=False, comment='决策结果')
-    result_message = Column(String(255), comment='决策说明/拒绝原因')
-    decision_time = Column(DATETIME, default='CURRENT_TIMESTAMP')
+    # 【枚举修复】
+    # 建议使用 sqlalchemy.Enum 并指定具体的枚举值，最好加上 name 参数防止数据库兼容问题
+    result_code = Column(Enum('ALLOW', 'DENY', name='decision_result_enum'), nullable=False)
 
-    # 建立 1:1 外键关系：decision_id 既是主键也是外键，指向 sys_access_policy(policy_id)
-    # 注意：SQLAlchemy 中，外键约束通过 ForeignKey 指定
-    policy_id = Column(BIGINT, ForeignKey('sys_access_policy.policy_id'), nullable=False)
+    result_message = Column(String(255))
 
-    # 关系
-    policy = relationship("AccessPolicy", backref="decision")
+    # 【时间修复】
+    # 必须传入 datetime.now 函数对象（不要加括号），而不是字符串 'CURRENT_TIMESTAMP'
+    decision_time = Column(DateTime, default=datetime.now)
+
+    # 反向关系定义（保持不变）
+    policy = relationship("AccessPolicy", back_populates="decision")
