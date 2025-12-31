@@ -7,6 +7,7 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from jose import JWTError, jwt
 import uvicorn
+from passlib.context import CryptContext
 
 # 引入我们刚才写的文件
 import models
@@ -22,10 +23,24 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# 简单的密码验证函数（因为数据库中存储的是明文密码）
+# 密码加密上下文
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 def verify_password(plain_password, stored_password):
-    # 直接比较明文密码
-    return plain_password == stored_password
+    """
+    验证密码
+    支持向后兼容：如果存储的是明文密码则直接比较，如果是哈希则使用bcrypt验证
+    """
+    # 检查是否是bcrypt哈希（以$2开头）
+    if stored_password.startswith('$2'):
+        return pwd_context.verify(plain_password, stored_password)
+    else:
+        # 向后兼容：直接比较明文密码
+        return plain_password == stored_password
+
+def get_password_hash(password):
+    """生成密码哈希"""
+    return pwd_context.hash(password)
 
 # JWT token 函数
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
@@ -94,7 +109,7 @@ async def login_for_access_token(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    # 验证明文密码（因为数据库中存储的是明文）
+    # 验证密码哈希
     if not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -255,9 +270,10 @@ async def create_admin_user(user_data: schemas.UserCreate, current_admin: models
         raise HTTPException(status_code=400, detail="Username already exists")
 
     # 创建新用户
+    hashed_password = get_password_hash(user_data.password)
     new_user = models.User(
         username=user_data.username,
-        password_hash=user_data.password,  # 注意：这里存储的是明文密码，根据现有代码
+        password_hash=hashed_password,  # 存储哈希后的密码
         real_name=user_data.real_name,
         security_level_id=user_data.security_level_id,
         category_id=user_data.category_id,

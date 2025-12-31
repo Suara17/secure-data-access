@@ -382,8 +382,7 @@ export default function AdminDashboard() {
                         <Label htmlFor="base_salary">基本薪资</Label>
                         <Input
                           id="base_salary"
-                          type="number"
-                          value={newSalary.base_salary}
+                          value={newSalary.base_salary || ''}
                           onChange={(e) => setNewSalary({...newSalary, base_salary: parseFloat(e.target.value) || 0})}
                           placeholder="输入基本薪资"
                           required
@@ -393,8 +392,7 @@ export default function AdminDashboard() {
                         <Label htmlFor="bonus">奖金</Label>
                         <Input
                           id="bonus"
-                          type="number"
-                          value={newSalary.bonus}
+                          value={newSalary.bonus || ''}
                           onChange={(e) => setNewSalary({...newSalary, bonus: parseFloat(e.target.value) || 0})}
                           placeholder="输入奖金"
                         />
