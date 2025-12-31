@@ -9,15 +9,15 @@ interface SecurityLevelBadgeProps {
 }
 
 const levelIcons = {
-  'public': ShieldOff,
-  'internal': Shield,
-  'secret': ShieldAlert,
-  'confidential': ShieldCheck,
+  '公开': ShieldOff,
+  '内部': Shield,
+  '秘密': ShieldAlert,
+  '机密': ShieldCheck,
 };
 
 export function SecurityLevelBadge({ level, size = 'md', showIcon = true }: SecurityLevelBadgeProps) {
   const info = getSecurityLevelInfo(level);
-  const Icon = levelIcons[level];
+  const Icon = levelIcons[info.value];
 
   const sizeClasses = {
     sm: 'text-xs px-2 py-0.5 gap-1',

@@ -55,26 +55,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // 1. 获取 Token (使用原生fetch避免axios配置问题)
+      // 1. 获取 Token
       const formData = new URLSearchParams();
       formData.append('username', username);
       formData.append('password', password);
 
-      const response = await fetch('http://localhost:8002/token', {
-        method: 'POST',
+      const response = await api.post('/token', formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: formData.toString()
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const { access_token } = data;
-
+      const { access_token } = response.data;
       localStorage.setItem('token', access_token);
 
       // 2. 获取用户信息

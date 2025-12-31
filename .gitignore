@@ -58,6 +58,18 @@ venv.bak/
 .claude/
 .serena/
 .spec-workflow/
+.iflow/
+
+# Development documents
+前后端不一致.md
+后端API接口开发.md
+GitHub上传指南.md
+
+# Token files
+token.json
+
+# Setup scripts
+command_setup.sh
 
 # Database
 *.db
