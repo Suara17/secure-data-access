@@ -21,7 +21,7 @@ export interface User {
   username: string;
   email?: string;
   role: 'admin' | 'user';
-  security_level: SecurityLevelInfo;
+  security_level: SecurityLevelInfo & { level_name: SecurityLevel };
   created_at: string;
 }
 

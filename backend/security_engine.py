@@ -17,7 +17,14 @@ def verify_access(user: User, resource, action: str = "read", db: Session = None
         level_ok = user_level >= resource_level
 
         # 范畴检查：用户范畴必须匹配资源范畴
-        category_ok = user.category_id == resource.data_category_id
+        # 但是公告是公司级别的通知，应该允许所有范畴的用户访问
+        # 另外，公开级别的数据也应该跨部门访问
+        if isinstance(resource, Notice) or resource_level == 1:
+            # 公告和公开级别数据对所有用户开放
+            category_ok = True
+        else:
+            # 其他资源需要范畴匹配
+            category_ok = user.category_id == resource.data_category_id
 
         # 特定职能访问规则：综合部可以看公告，但不能看财务
         if user.category.category_code == 'GEN' and resource.category.category_code == 'FIN':

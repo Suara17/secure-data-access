@@ -71,6 +71,12 @@ token.json
 # Setup scripts
 command_setup.sh
 
+# Design documents
+design_document.md
+
+# Temporary scripts
+inspect_db.py
+
 # Database
 *.db
 *.sqlite

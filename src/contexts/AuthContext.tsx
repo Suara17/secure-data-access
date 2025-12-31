@@ -91,7 +91,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     username: data.username,
     email: data.email,
     role: data.role,
-    security_level: data.security_level,
+    security_level: {
+      ...data.security_level,
+      level_name: mapSecurityLevelNameToKey(data.security_level.level_name)
+    },
     created_at: data.created_at,
   });
 
