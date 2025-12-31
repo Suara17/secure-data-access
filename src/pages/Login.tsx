@@ -55,28 +55,7 @@ export default function Login() {
             <p className="text-muted-foreground text-sm">Security Label Access Control</p>
           </div>
 
-          {/* Demo Credentials Info */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 space-y-2">
-            <p className="text-xs text-muted-foreground font-medium">演示账户：</p>
-            <div className="grid grid-cols-1 gap-2 text-xs">
-              <div className="bg-muted/50 rounded px-2 py-1">
-                <span className="text-muted-foreground">管理员：</span>
-                <span className="text-foreground font-mono ml-1">boss / 123456</span>
-              </div>
-              <div className="bg-muted/50 rounded px-2 py-1">
-                <span className="text-muted-foreground">机密用户：</span>
-                <span className="text-foreground font-mono ml-1">cfo / 123456</span>
-              </div>
-              <div className="bg-muted/50 rounded px-2 py-1">
-                <span className="text-muted-foreground">秘密用户：</span>
-                <span className="text-foreground font-mono ml-1">hr_mgr / 123456</span>
-              </div>
-              <div className="bg-muted/50 rounded px-2 py-1">
-                <span className="text-muted-foreground">公开用户：</span>
-                <span className="text-foreground font-mono ml-1">intern / 123456</span>
-              </div>
-            </div>
-          </div>
+
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
