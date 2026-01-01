@@ -343,6 +343,30 @@ async def update_user_labels(user_id: int, labels_data: schemas.UserLabelsUpdate
         "created_at": user.created_at.isoformat() if user.created_at else None
     }
 
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(user_id: int, current_admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """
+    删除用户账户（物理删除）。
+    仅管理员可访问。
+    注意：不允许删除当前登录的管理员账户。
+    """
+    # 不允许删除自己
+    if user_id == current_admin.user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete your own account"
+        )
+
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 物理删除用户
+    db.delete(user)
+    db.commit()
+
+    return {"message": "User deleted successfully", "user_id": user_id}
+
 @app.post("/api/admin/salaries")
 async def create_admin_salary(salary_data: schemas.SalaryCreate, current_admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
     """

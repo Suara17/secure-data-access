@@ -65,6 +65,9 @@ export default function AdminDashboard() {
   // 用户标签编辑状态
   const [editingUserLabels, setEditingUserLabels] = useState<{ userId: number; username: string; realName: string; securityLevelId: number; categoryId: number } | null>(null);
 
+  // 删除用户状态
+  const [deletingUser, setDeletingUser] = useState<{ userId: number; username: string; realName: string } | null>(null);
+
   // 数据管理相关状态
   const [salaries, setSalaries] = useState<any[]>([]);
   const [notices, setNotices] = useState<any[]>([]);
@@ -178,6 +181,25 @@ export default function AdminDashboard() {
       toast({
         title: "更新失败",
         description: "无法更新用户权限",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      toast({
+        title: "用户已删除",
+        description: "用户账户已成功删除",
+      });
+      // Refresh users list
+      const usersRes = await api.get('/api/admin/users');
+      setUsers(usersRes.data);
+    } catch (error) {
+      toast({
+        title: "删除失败",
+        description: "无法删除用户",
         variant: "destructive",
       });
     }
@@ -455,6 +477,24 @@ export default function AdminDashboard() {
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="space-y-2">
+                        <Label>职能类别</Label>
+                        <Select
+                          value={newUser.category_id.toString()}
+                          onValueChange={(value) => setNewUser({...newUser, category_id: parseInt(value)})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.category_id} value={cat.category_id.toString()}>
+                                {cat.category_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <Button type="submit" className="w-full">
                         <Plus className="w-4 h-4 mr-2" />
                         创建用户
@@ -479,20 +519,35 @@ export default function AdminDashboard() {
                             </div>
                             <SecurityLevelBadge level={mapSecurityLevelNameToKey(u.security_level.level_name)} size="sm" />
                           </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingUserLabels({
-                              userId: u.id,
-                              username: u.username,
-                              realName: u.real_name,
-                              securityLevelId: u.security_level.level_id,
-                              categoryId: u.category.category_id
-                            })}
-                            title="修改安全等级"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingUserLabels({
+                                userId: u.id,
+                                username: u.username,
+                                realName: u.real_name,
+                                securityLevelId: u.security_level.level_id,
+                                categoryId: u.category.category_id
+                              })}
+                              title="修改安全等级"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setDeletingUser({
+                                userId: u.id,
+                                username: u.username,
+                                realName: u.real_name
+                              })}
+                              title="删除用户"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -876,6 +931,16 @@ export default function AdminDashboard() {
         securityLevels={securityLevels}
         categories={categories}
         onSave={handleUpdateUserLabels}
+        loading={dialogLoading}
+      />
+
+      {/* Delete User Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={!!deletingUser}
+        onOpenChange={(open) => !open && setDeletingUser(null)}
+        onConfirm={() => deletingUser && handleDeleteUser(deletingUser.userId)}
+        resourceName={`${deletingUser?.username} (${deletingUser?.realName})`}
+        securityLevel={'公开'}
         loading={dialogLoading}
       />
     </div>
