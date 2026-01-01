@@ -33,6 +33,8 @@ import { SalaryEditDialog } from '@/components/admin/SalaryEditDialog';
 import { NoticeEditDialog } from '@/components/admin/NoticeEditDialog';
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog';
 import { UserLabelsEditDialog } from '@/components/admin/UserLabelsEditDialog';
+import { SalaryCreateDialog } from '@/components/admin/SalaryCreateDialog';
+import { NoticeCreateDialog } from '@/components/admin/NoticeCreateDialog';
 
 // 辅助函数：将后端的安全等级名称映射到前端键名
 const mapSecurityLevelNameToKey = (levelName: string): SecurityLevel => {
@@ -73,6 +75,8 @@ export default function AdminDashboard() {
   const [notices, setNotices] = useState<any[]>([]);
   const [editingSalary, setEditingSalary] = useState<any | null>(null);
   const [editingNotice, setEditingNotice] = useState<any | null>(null);
+  const [creatingSalary, setCreatingSalary] = useState(false);
+  const [creatingNotice, setCreatingNotice] = useState(false);
   const [deletingItem, setDeletingItem] = useState<{ type: 'salary' | 'notice'; id: number; name: string; level: SecurityLevel } | null>(null);
   const [dialogLoading, setDialogLoading] = useState(false);
 
@@ -85,20 +89,7 @@ export default function AdminDashboard() {
     category_id: 1,
   });
 
-  const [newSalary, setNewSalary] = useState({
-    employee_name: '',
-    base_salary: 0,
-    bonus: 0,
-    data_security_level_id: 1,
-    data_category_id: 1,
-  });
-
-  const [newNotice, setNewNotice] = useState({
-    title: '',
-    content: '',
-    data_security_level_id: 1,
-    data_category_id: 1,
-  });
+  
 
   const handleLogout = () => {
     logout();
@@ -187,16 +178,21 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteUser = async (userId: number) => {
+    console.log('[handleDeleteUser] 开始删除用户，ID:', userId);
     try {
-      await api.delete(`/api/admin/users/${userId}`);
+      const deleteResponse = await api.delete(`/api/admin/users/${userId}`);
+      console.log('[handleDeleteUser] 删除响应:', deleteResponse.data);
       toast({
         title: "用户已删除",
         description: "用户账户已成功删除",
       });
       // Refresh users list
+      console.log('[handleDeleteUser] 重新获取用户列表...');
       const usersRes = await api.get('/api/admin/users');
+      console.log('[handleDeleteUser] 获取到用户列表，数量:', usersRes.data.length);
       setUsers(usersRes.data);
     } catch (error) {
+      console.error('[handleDeleteUser] 删除失败:', error);
       toast({
         title: "删除失败",
         description: "无法删除用户",
@@ -205,50 +201,45 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleCreateSalary = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateSalary = async (data: { employee_name: string; base_salary: number; bonus: number; data_security_level_id: number; data_category_id: number }) => {
+    setDialogLoading(true);
     try {
-      await api.post('/api/admin/salaries', newSalary);
+      await api.post('/api/admin/salaries', data);
       toast({
         title: "薪资录入成功",
-        description: `${newSalary.employee_name} 的薪资信息已录入`,
+        description: `${data.employee_name} 的薪资信息已录入`,
       });
-      setNewSalary({
-        employee_name: '',
-        base_salary: 0,
-        bonus: 0,
-        data_security_level_id: 1,
-        data_category_id: 1,
-      });
+      setCreatingSalary(false);
+      await fetchManagementData();
     } catch (error) {
       toast({
         title: "录入失败",
         description: "无法录入薪资信息",
         variant: "destructive",
       });
+    } finally {
+      setDialogLoading(false);
     }
   };
 
-  const handleCreateNotice = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateNotice = async (data: { title: string; content: string; data_security_level_id: number; data_category_id: number }) => {
+    setDialogLoading(true);
     try {
-      await api.post('/api/admin/notices', newNotice);
+      await api.post('/api/admin/notices', data);
       toast({
         title: "公告发布成功",
-        description: `公告 "${newNotice.title}" 已发布`,
+        description: `公告 "${data.title}" 已发布`,
       });
-      setNewNotice({
-        title: '',
-        content: '',
-        data_security_level_id: 1,
-        data_category_id: 1,
-      });
+      setCreatingNotice(false);
+      await fetchManagementData();
     } catch (error) {
       toast({
         title: "发布失败",
         description: "无法发布公告",
         variant: "destructive",
       });
+    } finally {
+      setDialogLoading(false);
     }
   };
 
@@ -401,10 +392,6 @@ export default function AdminDashboard() {
                 <Users className="w-4 h-4" />
                 用户管理
               </TabsTrigger>
-              <TabsTrigger value="data" className="gap-2">
-                <FileText className="w-4 h-4" />
-                数据录入
-              </TabsTrigger>
               <TabsTrigger value="management" className="gap-2">
                 <Database className="w-4 h-4" />
                 数据管理
@@ -556,141 +543,24 @@ export default function AdminDashboard() {
               </div>
             </TabsContent>
 
-            {/* Data Entry Tab */}
-            <TabsContent value="data" className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Salary Entry Form */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Plus className="w-5 h-5" />
-                      录入薪资数据
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleCreateSalary} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="employee_name">员工姓名</Label>
-                        <Input
-                          id="employee_name"
-                          value={newSalary.employee_name}
-                          onChange={(e) => setNewSalary({...newSalary, employee_name: e.target.value})}
-                          placeholder="输入员工姓名"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="base_salary">基本薪资</Label>
-                        <Input
-                          id="base_salary"
-                          value={newSalary.base_salary || ''}
-                          onChange={(e) => setNewSalary({...newSalary, base_salary: parseFloat(e.target.value) || 0})}
-                          placeholder="输入基本薪资"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="bonus">奖金</Label>
-                        <Input
-                          id="bonus"
-                          value={newSalary.bonus || ''}
-                          onChange={(e) => setNewSalary({...newSalary, bonus: parseFloat(e.target.value) || 0})}
-                          placeholder="输入奖金"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>安全等级</Label>
-                        <Select
-                          value={newSalary.data_security_level_id.toString()}
-                          onValueChange={(value) => setNewSalary({...newSalary, data_security_level_id: parseInt(value)})}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {securityLevels.map((level) => (
-                              <SelectItem key={level.level_id} value={level.level_id.toString()}>
-                                {level.level_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button type="submit" className="w-full">
-                        <Plus className="w-4 h-4 mr-2" />
-                        录入薪资
-                      </Button>
-                    </form>
-                  </CardContent>
-                </Card>
-
-                {/* Notice Entry Form */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Plus className="w-5 h-5" />
-                      发布公告
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <form onSubmit={handleCreateNotice} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="title">公告标题</Label>
-                        <Input
-                          id="title"
-                          value={newNotice.title}
-                          onChange={(e) => setNewNotice({...newNotice, title: e.target.value})}
-                          placeholder="输入公告标题"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="content">公告内容</Label>
-                        <Input
-                          id="content"
-                          value={newNotice.content}
-                          onChange={(e) => setNewNotice({...newNotice, content: e.target.value})}
-                          placeholder="输入公告内容"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>安全等级</Label>
-                        <Select
-                          value={newNotice.data_security_level_id.toString()}
-                          onValueChange={(value) => setNewNotice({...newNotice, data_security_level_id: parseInt(value)})}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {securityLevels.map((level) => (
-                              <SelectItem key={level.level_id} value={level.level_id.toString()}>
-                                {level.level_name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button type="submit" className="w-full">
-                        <Plus className="w-4 h-4 mr-2" />
-                        发布公告
-                      </Button>
-                    </form>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
             {/* Data Management Tab */}
             <TabsContent value="management" className="space-y-6">
               {/* Salary Management */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    薪资数据管理 ({salaries.length})
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      薪资数据管理 ({salaries.length})
+                    </CardTitle>
+                    <Button
+                      size="sm"
+                      onClick={() => setCreatingSalary(true)}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新增
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -767,10 +637,19 @@ export default function AdminDashboard() {
               {/* Notice Management */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    公告管理 ({notices.length})
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      公告管理 ({notices.length})
+                    </CardTitle>
+                    <Button
+                      size="sm"
+                      onClick={() => setCreatingNotice(true)}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      新增
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -941,6 +820,26 @@ export default function AdminDashboard() {
         onConfirm={() => deletingUser && handleDeleteUser(deletingUser.userId)}
         resourceName={`${deletingUser?.username} (${deletingUser?.realName})`}
         securityLevel={'公开'}
+        loading={dialogLoading}
+      />
+
+      {/* Create Salary Dialog */}
+      <SalaryCreateDialog
+        open={creatingSalary}
+        onOpenChange={setCreatingSalary}
+        securityLevels={securityLevels}
+        categories={categories}
+        onSave={handleCreateSalary}
+        loading={dialogLoading}
+      />
+
+      {/* Create Notice Dialog */}
+      <NoticeCreateDialog
+        open={creatingNotice}
+        onOpenChange={setCreatingNotice}
+        securityLevels={securityLevels}
+        categories={categories}
+        onSave={handleCreateNotice}
         loading={dialogLoading}
       />
     </div>
