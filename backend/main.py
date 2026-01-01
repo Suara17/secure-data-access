@@ -164,6 +164,7 @@ async def get_salaries(current_user: models.User = Depends(get_current_user), db
 
         # 构建响应数据
         salary_data = {
+            "data_id": salary.data_id,  # 添加 ID 字段
             "employee_name": salary.employee_name,
             "amount": total_amount if allowed else None,
             "security_level": salary.security_label.level_name if salary.security_label else "未知",
@@ -217,6 +218,7 @@ async def get_notices(current_user: models.User = Depends(get_current_user), db:
 
         # 构建响应数据
         notice_data = {
+            "notice_id": notice.notice_id,  # 添加 ID 字段
             "title": notice.title,
             "content": notice.content if allowed else None,
             "security_level": notice.security_label.level_name if notice.security_label else "未知",
@@ -449,6 +451,244 @@ def _get_resource_name(target_table: str, object_data_id: int, db: Session) -> s
 
     # 如果找不到具体资源，返回通用描述
     return f"{target_table} ID:{object_data_id}"
+
+
+# ==================== 数据快照辅助函数 ====================
+
+from sqlalchemy import func
+from typing import Dict, Any
+import json
+
+def _save_data_history(
+    db: Session,
+    source_table: str,
+    source_data_id: int,
+    change_type: str,  # "UPDATE" or "DELETE"
+    operator_user_id: int,
+    data_snapshot: Dict[str, Any]
+) -> models.DataHistory:
+    """
+    保存数据变更历史快照（务实版本）
+
+    Args:
+        db: 数据库会话
+        source_table: 源表名（"data_salary" 或 "data_notice"）
+        source_data_id: 源数据ID
+        change_type: 变更类型（UPDATE/DELETE）
+        operator_user_id: 操作用户ID
+        data_snapshot: 数据快照（Python字典，自动转JSON）
+
+    Returns:
+        创建的历史记录对象
+    """
+    # 计算版本号（同一数据的第N次修改）
+    last_version = db.query(func.max(models.DataHistory.version_number)).filter(
+        models.DataHistory.source_table == source_table,
+        models.DataHistory.source_data_id == source_data_id
+    ).scalar() or 0
+
+    # 创建历史记录
+    history = models.DataHistory(
+        source_table=source_table,
+        source_data_id=source_data_id,
+        version_number=last_version + 1,
+        change_type=change_type,
+        operator_user_id=operator_user_id,
+        data_snapshot=data_snapshot  # SQLAlchemy 自动处理 JSON 序列化
+    )
+
+    db.add(history)
+    db.flush()  # 使用 flush 而非 commit，让调用者控制事务
+
+    return history
+
+
+def _model_to_snapshot(instance) -> Dict[str, Any]:
+    """
+    将 SQLAlchemy 模型实例转换为快照字典
+
+    务实点：手动选择需要保存的字段，避免序列化关系对象
+    """
+    if isinstance(instance, models.Salary):
+        return {
+            "data_id": instance.data_id,
+            "employee_name": instance.employee_name,
+            "base_salary": float(instance.base_salary),
+            "bonus": float(instance.bonus),
+            "data_security_level_id": instance.data_security_level_id,
+            "data_category_id": instance.data_category_id,
+            "lifecycle_status": instance.lifecycle_status,
+            "create_time": instance.create_time.isoformat() if instance.create_time else None
+        }
+    elif isinstance(instance, models.Notice):
+        return {
+            "notice_id": instance.notice_id,
+            "title": instance.title,
+            "content": instance.content,
+            "data_security_level_id": instance.data_security_level_id,
+            "data_category_id": instance.data_category_id
+        }
+    else:
+        raise ValueError(f"Unsupported model type: {type(instance)}")
+
+
+# ==================== 薪资 UPDATE/DELETE API ====================
+
+@app.put("/api/admin/salaries/{salary_id}")
+async def update_salary(
+    salary_id: int,
+    salary_update: schemas.SalaryUpdate,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    更新薪资数据（仅管理员）
+
+    权限控制：
+    - 仅 ADMIN 可执行（通过 get_current_admin 强制验证）
+    - 仅允许修改薪资字段，不允许修改安全标记
+    """
+    # 1. 查询目标薪资记录
+    salary = db.query(models.Salary).filter(models.Salary.data_id == salary_id).first()
+    if not salary:
+        raise HTTPException(status_code=404, detail="薪资记录不存在")
+
+    # 2. 保存修改前的快照
+    _save_data_history(
+        db=db,
+        source_table="data_salary",
+        source_data_id=salary_id,
+        change_type="UPDATE",
+        operator_user_id=current_admin.user_id,
+        data_snapshot=_model_to_snapshot(salary)
+    )
+
+    # 3. 应用更新（仅更新非 None 字段）
+    update_data = salary_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(salary, field, value)
+
+    db.commit()
+    db.refresh(salary)
+
+    return {
+        "message": "薪资记录更新成功",
+        "data_id": salary.data_id,
+        "updated_fields": list(update_data.keys())
+    }
+
+
+@app.delete("/api/admin/salaries/{salary_id}")
+async def delete_salary(
+    salary_id: int,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    删除薪资数据（物理删除 + 快照保存）
+
+    权限控制：仅 ADMIN 可执行
+    """
+    # 1. 查询目标记录
+    salary = db.query(models.Salary).filter(models.Salary.data_id == salary_id).first()
+    if not salary:
+        raise HTTPException(status_code=404, detail="薪资记录不存在")
+
+    # 2. 保存删除前的完整快照
+    _save_data_history(
+        db=db,
+        source_table="data_salary",
+        source_data_id=salary_id,
+        change_type="DELETE",
+        operator_user_id=current_admin.user_id,
+        data_snapshot=_model_to_snapshot(salary)
+    )
+
+    # 3. 物理删除
+    db.delete(salary)
+    db.commit()
+
+    return {
+        "message": "薪资记录已删除",
+        "data_id": salary_id
+    }
+
+
+# ==================== 公告 UPDATE/DELETE API ====================
+
+@app.put("/api/admin/notices/{notice_id}")
+async def update_notice(
+    notice_id: int,
+    notice_update: schemas.NoticeUpdate,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    更新公告数据（仅管理员）
+    """
+    # 1. 查询目标公告
+    notice = db.query(models.Notice).filter(models.Notice.notice_id == notice_id).first()
+    if not notice:
+        raise HTTPException(status_code=404, detail="公告不存在")
+
+    # 2. 保存快照
+    _save_data_history(
+        db=db,
+        source_table="data_notice",
+        source_data_id=notice_id,
+        change_type="UPDATE",
+        operator_user_id=current_admin.user_id,
+        data_snapshot=_model_to_snapshot(notice)
+    )
+
+    # 3. 应用更新
+    update_data = notice_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(notice, field, value)
+
+    db.commit()
+    db.refresh(notice)
+
+    return {
+        "message": "公告更新成功",
+        "notice_id": notice.notice_id,
+        "updated_fields": list(update_data.keys())
+    }
+
+
+@app.delete("/api/admin/notices/{notice_id}")
+async def delete_notice(
+    notice_id: int,
+    current_admin: models.User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    删除公告数据（物理删除 + 快照保存）
+    """
+    # 1. 查询目标公告
+    notice = db.query(models.Notice).filter(models.Notice.notice_id == notice_id).first()
+    if not notice:
+        raise HTTPException(status_code=404, detail="公告不存在")
+
+    # 2. 保存删除快照
+    _save_data_history(
+        db=db,
+        source_table="data_notice",
+        source_data_id=notice_id,
+        change_type="DELETE",
+        operator_user_id=current_admin.user_id,
+        data_snapshot=_model_to_snapshot(notice)
+    )
+
+    # 3. 物理删除
+    db.delete(notice)
+    db.commit()
+
+    return {
+        "message": "公告已删除",
+        "notice_id": notice_id
+    }
+
 
 # --- 其他接口 ---
 

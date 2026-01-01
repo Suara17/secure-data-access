@@ -124,3 +124,25 @@ class AccessDecision(Base):
 
     # 反向关系定义（保持不变）
     policy = relationship("AccessPolicy", back_populates="decision")
+
+
+# 数据变更历史模型（务实版本）
+class DataHistory(Base):
+    """数据变更历史表 - 记录所有数据的UPDATE和DELETE操作"""
+    __tablename__ = "sys_data_history"
+
+    history_id = Column(Integer, primary_key=True, autoincrement=True, index=True, comment='历史记录ID')
+    source_table = Column(String(50), nullable=False, index=True, comment='源表名称')
+    source_data_id = Column(Integer, nullable=False, index=True, comment='源数据ID')
+    version_number = Column(Integer, default=1, nullable=False, comment='版本号')
+    change_type = Column(Enum('UPDATE', 'DELETE', name='change_type_enum'), nullable=False, comment='变更类型')
+    operator_user_id = Column(Integer, ForeignKey('sys_user.user_id'), nullable=False, comment='操作用户ID')
+
+    # JSON 字段存储完整数据快照
+    from sqlalchemy.dialects.mysql import JSON as MySQLJSON
+    data_snapshot = Column(MySQLJSON, nullable=False, comment='数据快照（JSON格式）')
+
+    change_time = Column(DATETIME, default=datetime.now, nullable=False, comment='变更时间')
+
+    # 关系（用于查询优化）
+    operator = relationship("User", backref="data_changes")

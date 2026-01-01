@@ -94,6 +94,31 @@ export interface CreateNoticeRequest {
   data_category_id: number;
 }
 
+// 薪资管理详细数据（用于列表显示和编辑）
+export interface SalaryManagementData {
+  data_id: number;
+  employee_name: string;
+  base_salary: number;
+  bonus: number;
+  data_security_level_id: number;
+  data_category_id: number;
+  lifecycle_status: string;
+  security_level: SecurityLevelInfo;
+  category: CategoryInfo;
+  create_time?: string;
+}
+
+// 公告管理详细数据（用于列表显示和编辑）
+export interface NoticeManagementData {
+  notice_id: number;
+  title: string;
+  content: string;
+  data_security_level_id: number;
+  data_category_id: number;
+  security_level: SecurityLevelInfo;
+  category: CategoryInfo;
+}
+
 // 兼容原有代码的接口（用于mock数据）
 export interface LegacySecurityRule {
   id: string;

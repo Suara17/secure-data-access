@@ -30,40 +30,6 @@ secure-data-access 是一个基于强制访问控制（MAC）原理的安全数�
 - **后端业务层**：安全引擎、访问控制逻辑
 - **数据层**：MySQL 数据库 + SQLAlchemy ORM
 
-## 模块结构图
-
-```mermaid
-graph TD
-    A["(根) secure-data-access"] --> B["src 前端"];
-    A --> C["backend 后端"];
-
-    B --> D["components"];
-    B --> E["contexts"];
-    B --> F["data"];
-    B --> G["pages"];
-    B --> H["types"];
-    B --> I["lib"];
-
-    D --> J["ui"];
-    D --> K["AccessDeniedModal"];
-    D --> L["NavLink"];
-    D --> M["SecurityLevelBadge"];
-
-    C --> N["main.py API入口和认证"];
-    C --> O["models.py SQLAlchemy数据模型"];
-    C --> P["schemas.py Pydantic数据模式"];
-    C --> Q["database.py 数据库配置"];
-    C --> R["security_engine.py BLP安全引擎"];
-
-    click D "./src/components" "查看前端组件目录"
-    click E "./src/contexts" "查看前端上下文目录"
-    click F "./src/data" "查看前端数据目录"
-    click G "./src/pages" "查看前端页面目录"
-    click H "./src/types" "查看前端类型定义目录"
-    click N "./backend/main.py" "查看后端API入口"
-    click O "./backend/models.py" "查看数据模型"
-    click Q "./backend/database.py" "查看数据库配置"
-    click R "./backend/security_engine.py" "查看安全引擎"
 ```
 
 ## 模块索引
@@ -99,18 +65,14 @@ graph TD
 # 进入后端目录
 cd backend
 
-# 创建虚拟环境（首次）
-python -m venv venv
-
+# 使用项目根目录虚拟环境
 # 激活虚拟环境
 venv\Scripts\activate
-
-# 安装依赖（注意：需要安装python-jose[cryptography]用于JWT）
-pip install fastapi uvicorn sqlalchemy pymysql pydantic python-jose[cryptography]
 
 # 启动后端服务（端口8002）
 python main.py
 # 服务地址：http://127.0.0.1:8002
+# API文档：http://127.0.0.1:8002/docs
 ```
 
 ### 前端启动
@@ -147,6 +109,18 @@ npm run preview
 - 组件命名：采用 PascalCase
 - 样式命名：使用 Tailwind CSS 实用优先方法
 - 文件组织：按功能模块划分目录结构
+
+## 相关文档
+
+项目包含以下重要文档，建议配合阅读：
+
+| 文档名称 | 路径 | 说明 |
+|---------|------|------|
+| 数据访问逻辑详解 | [数据访问逻辑.md](./数据访问逻辑.md) | 详细解释三层漏斗访问控制模型和访问决策流程 |
+| 后端API接口文档 | [后端API接口开发.md](./后端API接口开发.md) | 后端RESTful API接口规范和使用说明 |
+| Backend模块文档 | [backend/CLAUDE.md](./backend/CLAUDE.md) | 后端模块详细架构和开发指南 |
+| 快速启动指南 | [START_GUIDE.md](./START_GUIDE.md) | 项目快速启动和部署指南 |
+| 项目简介 | [PROJECT_INTRO.md](./PROJECT_INTRO.md) | 项目背景、功能特性和技术选型 |
 
 ## AI 使用指引
 
@@ -245,9 +219,32 @@ npm run preview
   - `AuthContext`：管理JWT Token、用户认证状态和权限验证
 
 ### 后端安全实现
-- **核心函数**：`verify_access(user, resource, action="read")` - 在backend/security_engine.py中实现
-- **BLP模型**：基于Bell-LaPadula模型的简化实现，仅支持"下读(Read Down)"策略
-- **安全快照**：访问策略表(sys_access_policy)保存访问时的安全等级快照，确保审计可追溯
+
+**核心函数**：`verify_access(user, resource, action="read", db=None)` - 在backend/security_engine.py中实现
+
+**三层漏斗访问控制模型**：
+
+1. **第一层：等级检查（纵向控制 - BLP模型）**
+   - 规则：用户安全等级 ≥ 数据安全等级（下读原则）
+   - 实现：`user.security_label.level_weight >= resource.security_label.level_weight`
+   - 示例：机密级用户(4) ✅ 访问内部数据(2)，公开级用户(1) ❌ 访问秘密数据(3)
+
+2. **第二层：范畴检查（横向控制 - 部门隔离）**
+   - 规则：用户职能范畴 = 数据归属范畴（Need-to-know原则）
+   - 豁免规则：
+     - 公告(Notice)类型：跨部门可访问
+     - 公开级别数据(level_weight=1)：跨部门可访问
+     - 特殊隔离：综合部(GEN)不能访问财务部(FIN)数据
+   - 实现代码位置：backend/security_engine.py:19-32
+
+3. **第三层：审计记录（留痕机制）**
+   - 自动记录：所有访问尝试自动写入sys_access_policy和sys_access_decision表
+   - 拒绝原因跟踪：详细记录拒绝原因（"Missing security labels"、"Insufficient security level"、"Category mismatch"等）
+   - 实现代码位置：backend/security_engine.py:35-89
+
+**BLP模型**：基于Bell-LaPadula模型的简化实现，当前支持"下读(Read Down)"策略
+
+**安全快照**：访问策略表(sys_access_policy)保存访问时的安全等级快照，确保审计可追溯
 
 ### 完整数据模型
 - **User**：用户实体，包含安全等级标记和信任等级
@@ -257,31 +254,25 @@ npm run preview
 - **AccessPolicy/AccessDecision**：完整的审计追踪模型，记录所有访问请求和决策结果
 
 ### 当前限制与扩展建议
-#### 已识别的限制：
-1. **密码安全**：后端使用明文密码存储（verify_password直接比较明文）
-2. **JWT密钥**：SECRET_KEY硬编码在main.py中，生产环境应从环境变量读取
-3. **写操作**：security_engine.py中的verify_access函数不支持写操作（上写原则）
-4. **前端Mock**：前端使用mock数据，需要连接真实后端API
+
+#### 已实现的功能（2026-01更新）：
+1. ✅ **密码安全**：已实现bcrypt密码哈希存储，并支持向后兼容明文密码（backend/main.py:29-43）
+2. ✅ **多维访问控制**：已实现完整的"等级+职能范畴"双维度检查（backend/security_engine.py:5-91）
+3. ✅ **完整审计日志**：访问策略和决策结果自动记录到数据库，包含详细拒绝原因
+4. ✅ **特殊访问规则**：支持公告跨部门访问、公开数据豁免、职能隔离等细粒度规则
+
+#### 待优化项：
+1. **JWT密钥管理**：SECRET_KEY仍硬编码在main.py:19中，生产环境应从环境变量读取
+2. **写操作控制**：security_engine.py中的verify_access函数暂不完全支持上写(Write Up)策略
+3. **前端集成**：前端部分使用mock数据，需要完整连接真实后端API
+4. **环境配置**：数据库连接字符串应迁移至.env文件
 
 #### 扩展建议：
-1. **密码哈希**：实现密码哈希存储（bcrypt等）
-2. **环境变量**：将敏感配置移至环境变量
-3. **完整BLP**：实现上写(Write Up)策略
-4. **真实API集成**：替换前端mock数据为真实API调用
-5. **数据资源管理**：添加CRUD接口管理Salary和Notice数据
-6. **审计查询**：实现审计日志查询API
-7. **数据加密**：对敏感数据进行加密存储
-8. **细粒度权限**：基于职能类别(Category)实现更细粒度的访问控制
-
-## 变更记录 (Changelog)
-
-### 2025-12-30
-- **完整代码分析**：全面读取并分析前后端所有核心文件
-- **架构文档更新**：基于实际代码实现更新技术栈和模块描述
-- **数据库模型完善**：详细记录7个数据库表的完整结构
-- **API接口文档化**：记录3个核心API接口的详细信息
-- **安全逻辑澄清**：明确前后端安全等级体系和访问控制实现
-- **问题识别**：识别密码明文存储、JWT密钥硬编码等安全问题
-- **扩展建议**：提供8项具体的系统改进和扩展建议
-- **端口修正**：修正后端服务端口为8002（根据main.py配置）
-- **账户信息更新**：根据前端Login.tsx更新演示账户信息
+1. **环境变量管理**：使用python-dotenv管理敏感配置（SECRET_KEY、数据库连接等）
+2. **完整BLP实现**：在security_engine.py中添加Write Up策略的完整实现
+3. **数据资源管理API**：添加Salary和Notice数据的CRUD接口（GET/POST/PUT/DELETE）
+4. **审计日志查询**：实现审计日志的查询、筛选、导出API
+5. **数据加密**：对薪资等敏感字段进行数据库级加密存储
+6. **权限管理界面**：为管理员提供可视化的用户权限配置界面
+7. **会话管理**：实现JWT刷新令牌机制和用户会话超时控制
+8. **异常处理增强**：统一的API错误响应格式和详细的错误日志
