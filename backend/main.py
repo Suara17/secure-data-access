@@ -388,6 +388,15 @@ async def get_admin_security_levels(current_admin: models.User = Depends(get_cur
     levels = db.query(models.SecurityLevel).all()
     return levels
 
+@app.get("/api/admin/categories", response_model=List[schemas.CategoryBase])
+async def get_admin_categories(current_admin: models.User = Depends(get_current_admin), db: Session = Depends(get_db)):
+    """
+    获取系统支持的所有职能类别（财务、人事、研发、综合）。
+    用于前端下拉框选择。仅管理员可访问。
+    """
+    categories = db.query(models.Category).all()
+    return categories
+
 @app.get("/api/admin/audit-logs", response_model=List[schemas.AuditLogBase])
 async def get_admin_audit_logs(
     current_admin: models.User = Depends(get_current_admin),

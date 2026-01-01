@@ -32,6 +32,24 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SalaryEditDialog } from '@/components/admin/SalaryEditDialog';
 import { NoticeEditDialog } from '@/components/admin/NoticeEditDialog';
 import { DeleteConfirmDialog } from '@/components/admin/DeleteConfirmDialog';
+import { UserLabelsEditDialog } from '@/components/admin/UserLabelsEditDialog';
+
+// 辅助函数：将后端的安全等级名称映射到前端键名
+const mapSecurityLevelNameToKey = (levelName: string): SecurityLevel => {
+  if (levelName.includes('公开') || levelName.includes('Public')) {
+    return '公开';
+  }
+  if (levelName.includes('内部') || levelName.includes('Internal')) {
+    return '内部';
+  }
+  if (levelName.includes('秘密') || levelName.includes('Secret')) {
+    return '秘密';
+  }
+  if (levelName.includes('机密') || levelName.includes('Confidential')) {
+    return '机密';
+  }
+  return '公开';
+};
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -40,8 +58,12 @@ export default function AdminDashboard() {
   // State for API data
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [securityLevels, setSecurityLevels] = useState<SecurityLevelInfo[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 用户标签编辑状态
+  const [editingUserLabels, setEditingUserLabels] = useState<{ userId: number; username: string; realName: string; securityLevelId: number; categoryId: number } | null>(null);
 
   // 数据管理相关状态
   const [salaries, setSalaries] = useState<any[]>([]);
@@ -85,13 +107,15 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [usersRes, securityLevelsRes, auditLogsRes] = await Promise.all([
+        const [usersRes, securityLevelsRes, categoriesRes, auditLogsRes] = await Promise.all([
           api.get('/api/admin/users'),
           api.get('/api/admin/security-levels'),
+          api.get('/api/admin/categories'),
           api.get('/api/admin/audit-logs')
         ]);
         setUsers(usersRes.data);
         setSecurityLevels(securityLevelsRes.data);
+        setCategories(categoriesRes.data);
         setAuditLogs(auditLogsRes.data);
       } catch (error) {
         console.error('Failed to fetch admin data:', error);
@@ -448,28 +472,27 @@ export default function AdminDashboard() {
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {users.map((u) => (
                         <div key={u.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                          <div>
-                            <p className="font-medium">{u.username}</p>
-                            <p className="text-sm text-muted-foreground">{u.real_name}</p>
+                          <div className="flex items-center gap-3">
+                            <div>
+                              <p className="font-medium">{u.username}</p>
+                              <p className="text-sm text-muted-foreground">{u.real_name}</p>
+                            </div>
+                            <SecurityLevelBadge level={mapSecurityLevelNameToKey(u.security_level.level_name)} size="sm" />
                           </div>
-                          <div className="flex items-center gap-2">
-                            <SecurityLevelBadge level={u.security_level.level_name} size="sm" />
-                            <Select
-                              value={`${u.security_level.level_id}`}
-                              onValueChange={(value) => handleUpdateUserLabels(u.id, parseInt(value), u.category.category_id)}
-                            >
-                              <SelectTrigger className="w-24 h-8">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {securityLevels.map((level) => (
-                                  <SelectItem key={level.level_id} value={level.level_id.toString()}>
-                                    {level.level_name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingUserLabels({
+                              userId: u.id,
+                              username: u.username,
+                              realName: u.real_name,
+                              securityLevelId: u.security_level.level_id,
+                              categoryId: u.category.category_id
+                            })}
+                            title="修改安全等级"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -839,6 +862,20 @@ export default function AdminDashboard() {
         onConfirm={handleDeleteConfirm}
         resourceName={deletingItem?.name || ''}
         securityLevel={deletingItem?.level || '公开'}
+        loading={dialogLoading}
+      />
+
+      <UserLabelsEditDialog
+        open={!!editingUserLabels}
+        onOpenChange={(open) => !open && setEditingUserLabels(null)}
+        userId={editingUserLabels?.userId || 0}
+        username={editingUserLabels?.username || ''}
+        realName={editingUserLabels?.realName || ''}
+        securityLevelId={editingUserLabels?.securityLevelId || 1}
+        categoryId={editingUserLabels?.categoryId || 1}
+        securityLevels={securityLevels}
+        categories={categories}
+        onSave={handleUpdateUserLabels}
         loading={dialogLoading}
       />
     </div>
